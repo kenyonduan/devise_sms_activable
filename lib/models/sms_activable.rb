@@ -52,6 +52,12 @@ module Devise
       # Send confirmation token by sms
       def send_sms_token
         if (self.phone?)
+          if sms_sent_exceeded?
+            self.class.sms_confirmation_keys.each do |key|
+              self.errors.add(key, :sms_sent_exceeded)
+            end
+            return false
+          end
           generate_sms_token! if self.sms_confirmation_token.nil?
           # 发送时候的其他参数(etc. 模板 id, 模板参数) 在 Devise.sms_sender 中添加进去.
           ::Devise.sms_sender.send_sms(self.phone, self.sms_confirmation_token)
@@ -116,6 +122,11 @@ module Devise
       #
       def confirmation_sms_period_valid?
         confirmation_sms_sent_at && confirmation_sms_sent_at.utc >= self.class.sms_confirm_within.ago
+      end
+
+      # 检查短信发送的频率是否超过限制
+      def sms_sent_exceeded?
+        confirmation_sms_sent_at && (Time.now.utc - confirmation_sms_sent_at.utc) < self.class.sms_interval
       end
 
       # Checks whether the record is confirmed or not, yielding to the block
