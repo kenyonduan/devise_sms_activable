@@ -166,11 +166,8 @@ module Devise
 
         # Generates a small token that can be used conveniently on SMS's.
         # The token is 5 chars long and uppercased.
-        def generate_small_token(column)
-          loop do
-            token = rand(0..9999).to_s.rjust(4, "0")
-            break token unless to_adapter.find_first({ column => token })
-          end
+        def generate_small_token(_)
+          rand(0..9999).to_s.rjust(4, "0")
         end
 
         # Generate an sms token checking if one does not already exist in the database.
