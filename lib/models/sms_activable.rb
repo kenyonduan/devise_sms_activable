@@ -189,7 +189,7 @@ module Devise
           generate_small_token(:sms_confirmation_token)
         end
 
-        Devise::Models.config(self, :sms_confirm_within, :sms_confirmation_keys)
+        Devise::Models.config(self, :sms_confirm_within, :sms_confirmation_keys, :sms_sent_interval)
       end
     end
   end
