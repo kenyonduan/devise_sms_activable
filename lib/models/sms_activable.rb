@@ -58,7 +58,7 @@ module Devise
             end
             return false
           end
-          generate_sms_token! if self.sms_confirmation_token.nil?
+          generate_sms_token!
           # 发送时候的其他参数(etc. 模板 id, 模板参数) 在 Devise.sms_sender 中添加进去.
           ::Devise.sms_sender.send_sms(self.phone, self.sms_confirmation_token)
         else
