@@ -126,7 +126,7 @@ module Devise
 
       # 检查短信发送的频率是否超过限制
       def sms_sent_exceeded?
-        confirmation_sms_sent_at && (Time.now.utc - confirmation_sms_sent_at.utc) < self.class.sms_interval
+        confirmation_sms_sent_at && (Time.now.utc - confirmation_sms_sent_at.utc) < self.class.sms_sent_interval
       end
 
       # Checks whether the record is confirmed or not, yielding to the block

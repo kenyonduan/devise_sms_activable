@@ -16,8 +16,8 @@ module Devise
   @@sms_confirmation_keys = [:phone]
 
   # 同一手机号的短信验证码的发送间隔
-  mattr_accessor :sms_interval
-  @@sms_interval = 1.minute
+  mattr_accessor :sms_sent_interval
+  @@sms_sent_interval = 1.minute
 
   # Get the sms sender class from the mailer reference object.
   def self.sms_sender
