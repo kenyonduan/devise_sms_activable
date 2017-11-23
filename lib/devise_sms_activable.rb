@@ -10,9 +10,10 @@ require 'devise_sms_activable/rails'
 
 module Devise
   mattr_accessor :sms_confirm_within
-  @@sms_confirm_within = 2.days
+  @@sms_confirm_within = 15.minutes
+
   mattr_accessor :sms_confirmation_keys
-  @@sms_confirmation_keys = [:email]
+  @@sms_confirmation_keys = [:phone]
 
   # Get the sms sender class from the mailer reference object.
   def self.sms_sender

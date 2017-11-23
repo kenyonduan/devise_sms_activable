@@ -31,7 +31,7 @@ module Devise
 
       included do
         before_create :generate_sms_token, :if => :sms_confirmation_required?
-        after_create  :resend_sms_token, :if => :sms_confirmation_required?
+        after_create :resend_sms_token, :if => :sms_confirmation_required?
       end
 
       # Confirm a user by setting it's sms_confirmed_at to actual time. If the user
@@ -51,9 +51,10 @@ module Devise
 
       # Send confirmation token by sms
       def send_sms_token
-        if(self.phone?)
+        if (self.phone?)
           generate_sms_token! if self.sms_confirmation_token.nil?
-          ::Devise.sms_sender.send_sms(self.phone, I18n.t(:"devise.sms_activations.sms_body", :sms_confirmation_token => self.sms_confirmation_token, :default => self.sms_confirmation_token))
+          # 发送时候的其他参数(etc. 模板 id, 模板参数) 在 Devise.sms_sender 中添加进去.
+          ::Devise.sms_sender.send_sms(self.phone, self.sms_confirmation_token)
         else
           self.class.sms_confirmation_keys.each do |key|
             self.errors.add(key, :no_phone_associated)
@@ -89,97 +90,96 @@ module Devise
 
       protected
 
-        # Callback to overwrite if an sms confirmation is required or not.
-        def sms_confirmation_required?
-          !confirmed_sms?
+      # Callback to overwrite if an sms confirmation is required or not.
+      def sms_confirmation_required?
+        !confirmed_sms?
+      end
+
+      # Checks if the confirmation for the user is within the limit time.
+      # We do this by calculating if the difference between today and the
+      # confirmation sent date does not exceed the confirm in time configured.
+      # Confirm_in is a model configuration, must always be an integer value.
+      #
+      # Example:
+      #
+      #   # sms_confirm_within = 1.day and sms_confirmation_sent_at = today
+      #   confirmation_period_valid?   # returns true
+      #
+      #   # sms_confirm_within = 5.days and sms_confirmation_sent_at = 4.days.ago
+      #   confirmation_period_valid?   # returns true
+      #
+      #   # sms_confirm_within = 5.days and sms_confirmation_sent_at = 5.days.ago
+      #   confirmation_period_valid?   # returns false
+      #
+      #   # sms_confirm_within = 0.days
+      #   confirmation_period_valid?   # will always return false
+      #
+      def confirmation_sms_period_valid?
+        confirmation_sms_sent_at && confirmation_sms_sent_at.utc >= self.class.sms_confirm_within.ago
+      end
+
+      # Checks whether the record is confirmed or not, yielding to the block
+      # if it's already confirmed, otherwise adds an error to email.
+      def unless_sms_confirmed
+        unless confirmed_sms?
+          yield
+        else
+          self.class.sms_confirmation_keys.each do |key|
+            self.errors.add(key, :sms_already_confirmed)
+          end
+          false
+        end
+      end
+
+      # Generates a new random token for confirmation, and stores the time
+      # this token is being generated
+      def generate_sms_token
+        self.sms_confirmed_at = nil
+        self.sms_confirmation_token = self.class.sms_confirmation_token
+        self.confirmation_sms_sent_at = Time.now.utc
+      end
+
+      def generate_sms_token!
+        generate_sms_token && save(:validate => false)
+      end
+
+      module ClassMethods
+        # Attempt to find a user by it's email. If a record is found, send a new
+        # sms token instructions to it. If not user is found, returns a new user
+        # with an email not found error.
+        # Options must contain the user email
+        def send_sms_token(attributes={})
+          sms_confirmable = find_or_initialize_with_errors(sms_confirmation_keys, attributes, :not_found)
+          sms_confirmable.resend_sms_token if sms_confirmable.persisted?
+          sms_confirmable
         end
 
-        # Checks if the confirmation for the user is within the limit time.
-        # We do this by calculating if the difference between today and the
-        # confirmation sent date does not exceed the confirm in time configured.
-        # Confirm_in is a model configuration, must always be an integer value.
-        #
-        # Example:
-        #
-        #   # sms_confirm_within = 1.day and sms_confirmation_sent_at = today
-        #   confirmation_period_valid?   # returns true
-        #
-        #   # sms_confirm_within = 5.days and sms_confirmation_sent_at = 4.days.ago
-        #   confirmation_period_valid?   # returns true
-        #
-        #   # sms_confirm_within = 5.days and sms_confirmation_sent_at = 5.days.ago
-        #   confirmation_period_valid?   # returns false
-        #
-        #   # sms_confirm_within = 0.days
-        #   confirmation_period_valid?   # will always return false
-        #
-        def confirmation_sms_period_valid?
-          confirmation_sms_sent_at && confirmation_sms_sent_at.utc >= self.class.sms_confirm_within.ago
+        # Find a user by it's sms confirmation token and try to confirm it.
+        # If no user is found, returns a new user with an error.
+        # If the user is already confirmed, create an error for the user
+        # Options must have the sms_confirmation_token
+        def confirm_by_sms_token(sms_confirmation_token)
+          sms_confirmable = find_or_initialize_with_error_by(:sms_confirmation_token, sms_confirmation_token)
+          sms_confirmable.confirm_sms! if sms_confirmable.persisted?
+          sms_confirmable
         end
 
-        # Checks whether the record is confirmed or not, yielding to the block
-        # if it's already confirmed, otherwise adds an error to email.
-        def unless_sms_confirmed
-          unless confirmed_sms?
-            yield
-          else
-            self.class.sms_confirmation_keys.each do |key|
-              self.errors.add(key, :sms_already_confirmed)
-            end
-            false
+        # Generates a small token that can be used conveniently on SMS's.
+        # The token is 5 chars long and uppercased.
+        def generate_small_token(column)
+          loop do
+            token = rand(0..9999).to_s.rjust(4, "0")
+            break token unless to_adapter.find_first({ column => token })
           end
         end
 
-        # Generates a new random token for confirmation, and stores the time
-        # this token is being generated
-        def generate_sms_token
-          self.sms_confirmed_at = nil
-          self.sms_confirmation_token = self.class.sms_confirmation_token
-          self.confirmation_sms_sent_at = Time.now.utc
+        # Generate an sms token checking if one does not already exist in the database.
+        def sms_confirmation_token
+          generate_small_token(:sms_confirmation_token)
         end
 
-        def generate_sms_token!
-          generate_sms_token && save(:validate => false)
-        end
-
-        module ClassMethods
-          # Attempt to find a user by it's email. If a record is found, send a new
-          # sms token instructions to it. If not user is found, returns a new user
-          # with an email not found error.
-          # Options must contain the user email
-          def send_sms_token(attributes={})
-            sms_confirmable = find_or_initialize_with_errors(sms_confirmation_keys, attributes, :not_found)
-            sms_confirmable.resend_sms_token if sms_confirmable.persisted?
-            sms_confirmable
-          end
-
-          # Find a user by it's sms confirmation token and try to confirm it.
-          # If no user is found, returns a new user with an error.
-          # If the user is already confirmed, create an error for the user
-          # Options must have the sms_confirmation_token
-          def confirm_by_sms_token(sms_confirmation_token)
-            sms_confirmable = find_or_initialize_with_error_by(:sms_confirmation_token, sms_confirmation_token)
-            sms_confirmable.confirm_sms! if sms_confirmable.persisted?
-            sms_confirmable
-          end
-
-          # Generates a small token that can be used conveniently on SMS's.
-          # The token is 5 chars long and uppercased.
-
-          def generate_small_token(column)
-            loop do
-              token = Devise.friendly_token[0,5].upcase
-              break token unless to_adapter.find_first({ column => token })
-            end
-          end
-
-          # Generate an sms token checking if one does not already exist in the database.
-          def sms_confirmation_token
-            generate_small_token(:sms_confirmation_token)
-          end
-
-          Devise::Models.config(self, :sms_confirm_within, :sms_confirmation_keys)
-        end
+        Devise::Models.config(self, :sms_confirm_within, :sms_confirmation_keys)
+      end
     end
   end
 end
