@@ -174,8 +174,8 @@ module Devise
         # The token is 5 chars long and uppercased.
         def generate_small_token(column)
           loop do
-            token = Devise.friendly_token[0, 5].upcase
-            break token unless to_adapter.find_first({ column => token })
+            token = rand(0..999_999).to_s.rjust(6, '0')
+            break token unless to_adapter.find_first(column: token)
           end
         end
 
