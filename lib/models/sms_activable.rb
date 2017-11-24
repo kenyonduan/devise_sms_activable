@@ -175,7 +175,7 @@ module Devise
         def generate_small_token(column)
           loop do
             token = rand(0..999_999).to_s.rjust(6, '0')
-            break token unless to_adapter.find_first(column: token)
+            break token unless to_adapter.find_first({ column => token })
           end
         end
 
